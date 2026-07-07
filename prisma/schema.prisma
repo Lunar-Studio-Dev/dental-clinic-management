@@ -33,6 +33,12 @@ enum VisitType {
   FOLLOW_UP
 }
 
+// Staff role, lowercase to mirror Clerk's publicMetadata.role values exactly.
+enum StaffRole {
+  receptionist
+  doctor
+}
+
 model Clinic {
   id        String    @id @default(cuid())
   name      String
@@ -40,6 +46,24 @@ model Clinic {
   createdAt DateTime  @default(now())
   patients  Patient[] @relation("FirstClinic")
   visits    Visit[]
+  staff     Staff[]
+}
+
+// One row per Clerk staff user (id = Clerk userId). Mirrored one-way from Clerk via
+// webhooks (+ backfill). Clerk stays the source of truth for identity/role; this table
+// exists for clinic assignment, rosters, and cheap server-side clinic authorization.
+model Staff {
+  id        String    @id // = Clerk userId
+  email     String    @unique
+  name      String
+  role      StaffRole
+  clinicId  String? // assigned clinic (receptionists); null = unassigned → runtime default
+  clinic    Clinic?   @relation(fields: [clinicId], references: [id])
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([clinicId])
+  @@index([role])
 }
 
 model Patient {

@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRole } from "~/lib/hooks/use-role";
 import { cn } from "~/lib/utils";
-import { isActive, NAV_ITEMS } from "./nav-items";
+import { isActive, visibleNavItems } from "./nav-items";
 
 // Mobile primary navigation (hidden ≥ md, where the sidebar takes over).
 export function BottomNav() {
   const pathname = usePathname();
+  const role = useRole();
 
   return (
     <nav className="bg-background/95 supports-[backdrop-filter]:bg-background/80 fixed inset-x-0 bottom-0 z-40 flex border-t backdrop-blur md:hidden">
-      {NAV_ITEMS.map((item) => {
+      {visibleNavItems(role).map((item) => {
         const active = isActive(pathname, item.href);
         return (
           <Link

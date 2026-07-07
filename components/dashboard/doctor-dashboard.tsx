@@ -6,8 +6,8 @@ import { ErrorState } from "~/components/error-state";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { NewVisitDialog } from "~/components/visits/new-visit-dialog";
+import { useActiveClinicId } from "~/lib/hooks/use-active-clinic";
 import { useClinics } from "~/lib/hooks/use-clinics";
-import { useCurrentClinicId } from "~/lib/hooks/use-current-clinic";
 import { useMetrics } from "~/lib/hooks/use-metrics";
 import { ClinicDonut } from "./clinic-donut";
 import { DashboardSkeleton } from "./dashboard-skeleton";
@@ -17,7 +17,7 @@ import { RecentVisits } from "./recent-visits";
 
 export function DoctorDashboard() {
   const { data: clinics } = useClinics();
-  const clinicId = useCurrentClinicId(clinics ?? []);
+  const clinicId = useActiveClinicId(clinics ?? []);
   const { data: m, isLoading, isError, refetch } = useMetrics(clinicId);
   const [visitOpen, setVisitOpen] = useState(false);
 

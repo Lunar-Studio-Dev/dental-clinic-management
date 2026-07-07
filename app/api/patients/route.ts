@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { resolveClinicScope } from "~/lib/clinic-scope";
 import type { Prisma } from "~/lib/generated/prisma/client";
 import { prisma } from "~/lib/prisma";
 import { patientCreateSchema } from "~/lib/schemas";
@@ -8,18 +8,15 @@ const PAGE_SIZE = 20;
 
 // GET /api/patients?clinicId&q&cursor → { patients, nextCursor }
 export async function GET(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
-
   const url = new URL(req.url);
-  const clinicId = url.searchParams.get("clinicId");
-  if (!clinicId) return new Response("clinicId is required", { status: 400 });
+  const scope = await resolveClinicScope(url.searchParams.get("clinicId"));
+  if (!scope.ok) return new Response(scope.message, { status: scope.status });
 
   const q = url.searchParams.get("q")?.trim();
   const cursor = url.searchParams.get("cursor") ?? undefined;
 
   const where: Prisma.PatientWhereInput = {
-    firstClinicId: clinicId,
+    firstClinicId: scope.clinicId,
     ...(q
       ? {
           OR: [
@@ -48,11 +45,8 @@ export async function GET(req: Request) {
   return Response.json({ patients, nextCursor });
 }
 
-// POST /api/patients → 201 PatientDTO
+// POST /api/patients → 201 PatientDTO (clinic forced to the caller's scope)
 export async function POST(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
-
   let json: unknown;
   try {
     json = await req.json();
@@ -66,12 +60,16 @@ export async function POST(req: Request) {
   }
   const d = parsed.data;
 
+  // Authorize + resolve the clinic; a receptionist can only create in their clinic.
+  const scope = await resolveClinicScope(d.firstClinicId);
+  if (!scope.ok) return new Response(scope.message, { status: scope.status });
+
   const created = await prisma.patient.create({
     data: {
       name: d.name,
       gender: d.gender,
       contactNumber: d.contactNumber,
-      firstClinicId: d.firstClinicId,
+      firstClinicId: scope.clinicId, // stamped from scope, not trusted from body
       dateOfBirth: d.dateOfBirth ? new Date(d.dateOfBirth) : null,
       ageYears: d.ageYears ?? null,
       bloodGroup: d.bloodGroup,

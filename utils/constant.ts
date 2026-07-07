@@ -208,4 +208,12 @@ export const SEED_USERS: SeedUser[] = [
     lastName: "Doctor",
     role: "doctor" satisfies Role,
   },
+  {
+    // A second receptionist left unassigned, to demo the doctor's assign flow.
+    email: "reception2@clinicos.app",
+    password: "Reception2#2026",
+    firstName: "Sam",
+    lastName: "Kapoor",
+    role: "receptionist" satisfies Role,
+  },
 ];

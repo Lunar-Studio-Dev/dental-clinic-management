@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { resolveClinicScope } from "~/lib/clinic-scope";
 import { Prisma } from "~/lib/generated/prisma/client";
 import { prisma } from "~/lib/prisma";
 import { patientUpdateSchema } from "~/lib/schemas";
@@ -6,17 +6,17 @@ import { toPatientDTO, toVisitDTO } from "~/lib/serialize";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// GET /api/patients/[id] → { patient, visits } (visits newest first)
+// GET /api/patients/[id] → { patient, visits } (only within the caller's clinic scope)
 export async function GET(_req: Request, { params }: Ctx) {
-  const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
-
   const { id } = await params;
   const found = await prisma.patient.findUnique({
     where: { id },
     include: { visits: { orderBy: { visitedAt: "desc" } } },
   });
   if (!found) return new Response("Not found", { status: 404 });
+
+  const scope = await resolveClinicScope(found.firstClinicId);
+  if (!scope.ok) return new Response(scope.message, { status: scope.status });
 
   const { visits, ...patient } = found;
   return Response.json({
@@ -25,12 +25,19 @@ export async function GET(_req: Request, { params }: Ctx) {
   });
 }
 
-// PATCH /api/patients/[id] → updated PatientDTO (firstClinicId is immutable)
+// PATCH /api/patients/[id] → updated PatientDTO (firstClinicId immutable; scope-checked)
 export async function PATCH(req: Request, { params }: Ctx) {
-  const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
-
   const { id } = await params;
+
+  const existing = await prisma.patient.findUnique({
+    where: { id },
+    select: { firstClinicId: true },
+  });
+  if (!existing) return new Response("Not found", { status: 404 });
+
+  const scope = await resolveClinicScope(existing.firstClinicId);
+  if (!scope.ok) return new Response(scope.message, { status: scope.status });
+
   let json: unknown;
   try {
     json = await req.json();

@@ -2,8 +2,8 @@
 
 import { ErrorState } from "~/components/error-state";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import { useActiveClinicId } from "~/lib/hooks/use-active-clinic";
 import { useClinics } from "~/lib/hooks/use-clinics";
-import { useCurrentClinicId } from "~/lib/hooks/use-current-clinic";
 import { useMetrics } from "~/lib/hooks/use-metrics";
 import { DashboardSkeleton } from "./dashboard-skeleton";
 import { KpiCard } from "./kpi-card";
@@ -13,7 +13,7 @@ import { WeeklyVisitsChart } from "./weekly-visits-chart";
 
 export function ReceptionDashboard() {
   const { data: clinics } = useClinics();
-  const clinicId = useCurrentClinicId(clinics ?? []);
+  const clinicId = useActiveClinicId(clinics ?? []);
   const { data: m, isLoading, isError, refetch } = useMetrics(clinicId);
 
   return (

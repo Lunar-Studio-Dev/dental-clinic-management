@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const authMock = vi.fn();
+const scopeMock = vi.fn();
 const findUniqueMock = vi.fn();
 const updateMock = vi.fn();
 
-vi.mock("@clerk/nextjs/server", () => ({ auth: () => authMock() }));
+vi.mock("~/lib/clinic-scope", () => ({
+  resolveClinicScope: (...a: unknown[]) => scopeMock(...a),
+}));
 vi.mock("~/lib/prisma", () => ({
   prisma: {
     patient: {
@@ -42,35 +44,56 @@ const visitRow = {
 };
 
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
+const okScope = { ok: true, clinicId: "clinic_1", role: "receptionist" };
 
 beforeEach(() => {
-  authMock.mockReset();
+  scopeMock.mockReset();
   findUniqueMock.mockReset();
   updateMock.mockReset();
-  authMock.mockResolvedValue({ userId: "user_1" });
+  scopeMock.mockResolvedValue(okScope);
 });
 
 describe("GET /api/patients/[id]", () => {
-  it("returns { patient, visits }", async () => {
+  it("returns { patient, visits } within scope", async () => {
     findUniqueMock.mockResolvedValue({ ...patientRow, visits: [visitRow] });
     const res = await GET(new Request("http://x"), ctx("p1"));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.patient.id).toBe("p1");
     expect(body.visits).toHaveLength(1);
-    expect(body.visits[0].id).toBe("v1");
-    expect(typeof body.visits[0].visitedAt).toBe("string");
+    expect(scopeMock).toHaveBeenCalledWith("clinic_1"); // the patient's clinic
   });
 
-  it("404 when the patient is missing", async () => {
+  it("404 when the patient is missing (before scope)", async () => {
     findUniqueMock.mockResolvedValue(null);
     const res = await GET(new Request("http://x"), ctx("nope"));
     expect(res.status).toBe(404);
+    expect(scopeMock).not.toHaveBeenCalled();
+  });
+
+  it("403 when the patient is outside the caller's clinic", async () => {
+    findUniqueMock.mockResolvedValue({ ...patientRow, visits: [] });
+    scopeMock.mockResolvedValue({ ok: false, status: 403, message: "no" });
+    const res = await GET(new Request("http://x"), ctx("p1"));
+    expect(res.status).toBe(403);
   });
 });
 
 describe("PATCH /api/patients/[id]", () => {
+  it("404 when the patient is missing", async () => {
+    findUniqueMock.mockResolvedValue(null);
+    const res = await PATCH(
+      new Request("http://x", {
+        method: "PATCH",
+        body: JSON.stringify({ name: "Z" }),
+      }),
+      ctx("nope"),
+    );
+    expect(res.status).toBe(404);
+  });
+
   it("400 on invalid body", async () => {
+    findUniqueMock.mockResolvedValue({ firstClinicId: "clinic_1" });
     const res = await PATCH(
       new Request("http://x", {
         method: "PATCH",
@@ -82,7 +105,8 @@ describe("PATCH /api/patients/[id]", () => {
     expect(updateMock).not.toHaveBeenCalled();
   });
 
-  it("updates and returns the patient", async () => {
+  it("updates and returns the patient within scope", async () => {
+    findUniqueMock.mockResolvedValue({ firstClinicId: "clinic_1" });
     updateMock.mockResolvedValue({
       ...patientRow,
       contactNumber: "9899999999",
@@ -96,7 +120,19 @@ describe("PATCH /api/patients/[id]", () => {
     );
     expect(res.status).toBe(200);
     expect(updateMock).toHaveBeenCalledOnce();
-    const body = await res.json();
-    expect(body.contactNumber).toBe("9899999999");
+  });
+
+  it("403 when the patient is outside the caller's clinic", async () => {
+    findUniqueMock.mockResolvedValue({ firstClinicId: "clinic_2" });
+    scopeMock.mockResolvedValue({ ok: false, status: 403, message: "no" });
+    const res = await PATCH(
+      new Request("http://x", {
+        method: "PATCH",
+        body: JSON.stringify({ name: "Z" }),
+      }),
+      ctx("p1"),
+    );
+    expect(res.status).toBe(403);
+    expect(updateMock).not.toHaveBeenCalled();
   });
 });

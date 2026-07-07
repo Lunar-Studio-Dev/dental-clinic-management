@@ -11,8 +11,8 @@ import {
   EmptyTitle,
 } from "~/components/ui/empty";
 import { Skeleton } from "~/components/ui/skeleton";
+import { useActiveClinicId } from "~/lib/hooks/use-active-clinic";
 import { useClinics } from "~/lib/hooks/use-clinics";
-import { useCurrentClinicId } from "~/lib/hooks/use-current-clinic";
 import { useDebouncedValue } from "~/lib/hooks/use-debounced-value";
 import { usePatients } from "~/lib/hooks/use-patients";
 import { PatientFormSheet } from "./patient-form-sheet";
@@ -23,7 +23,7 @@ const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6"];
 
 export function PatientsPage() {
   const { data: clinics } = useClinics();
-  const clinicId = useCurrentClinicId(clinics ?? []);
+  const clinicId = useActiveClinicId(clinics ?? []);
   const [q, setQ] = useState("");
   const debouncedQ = useDebouncedValue(q, 300);
   const query = usePatients(clinicId, debouncedQ);

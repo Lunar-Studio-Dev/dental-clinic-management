@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const authMock = vi.fn();
+const scopeMock = vi.fn();
 const findManyMock = vi.fn();
 const countMock = vi.fn();
 const createMock = vi.fn();
 
-vi.mock("@clerk/nextjs/server", () => ({ auth: () => authMock() }));
+vi.mock("~/lib/clinic-scope", () => ({
+  resolveClinicScope: (...a: unknown[]) => scopeMock(...a),
+}));
 vi.mock("~/lib/prisma", () => ({
   prisma: {
     visit: {
@@ -31,27 +33,25 @@ function visitRow(id: string, name = "Asha") {
   };
 }
 
+const okScope = { ok: true, clinicId: "clinic_1", role: "receptionist" };
+
 beforeEach(() => {
-  authMock.mockReset();
+  scopeMock.mockReset();
   findManyMock.mockReset();
   countMock.mockReset();
   createMock.mockReset();
-  authMock.mockResolvedValue({ userId: "user_1" });
+  scopeMock.mockResolvedValue(okScope);
 });
 
 describe("GET /api/visits", () => {
-  it("401 when unauthenticated", async () => {
-    authMock.mockResolvedValue({ userId: null });
-    const res = await GET(new Request("http://x/api/visits?clinicId=clinic_1"));
-    expect(res.status).toBe(401);
+  it("propagates a scope failure", async () => {
+    scopeMock.mockResolvedValue({ ok: false, status: 403, message: "no" });
+    const res = await GET(new Request("http://x/api/visits?clinicId=clinic_2"));
+    expect(res.status).toBe(403);
+    expect(findManyMock).not.toHaveBeenCalled();
   });
 
-  it("400 when clinicId is missing", async () => {
-    const res = await GET(new Request("http://x/api/visits"));
-    expect(res.status).toBe(400);
-  });
-
-  it("range=today adds a visitedAt lower bound and maps patientName", async () => {
+  it("range=today scopes to the resolved clinic + a date bound", async () => {
     findManyMock.mockResolvedValue([visitRow("v1", "Asha Mehta")]);
     const res = await GET(
       new Request("http://x/api/visits?clinicId=clinic_1&range=today"),
@@ -71,8 +71,7 @@ describe("GET /api/visits", () => {
     await GET(
       new Request("http://x/api/visits?clinicId=clinic_1&range=recent"),
     );
-    const where = findManyMock.mock.calls[0][0].where;
-    expect(where.visitedAt).toBeUndefined();
+    expect(findManyMock.mock.calls[0][0].where.visitedAt).toBeUndefined();
   });
 });
 
@@ -87,24 +86,38 @@ describe("POST /api/visits", () => {
     expect(res.status).toBe(400);
   });
 
-  it("derives type NEW when the patient has no prior visits", async () => {
-    countMock.mockResolvedValue(0);
-    createMock.mockResolvedValue(visitRow("v9"));
+  it("propagates a scope failure (403 cross-clinic)", async () => {
+    scopeMock.mockResolvedValue({ ok: false, status: 403, message: "no" });
     const res = await POST(
       new Request("http://x/api/visits", {
         method: "POST",
         body: JSON.stringify({
           patientId: "p1",
-          clinicId: "clinic_1",
+          clinicId: "clinic_2",
           reason: "Fever",
         }),
       }),
     );
-    expect(res.status).toBe(201);
-    expect(createMock.mock.calls[0][0].data.type).toBe("NEW");
+    expect(res.status).toBe(403);
+    expect(createMock).not.toHaveBeenCalled();
   });
 
-  it("derives type FOLLOW_UP when the patient has prior visits", async () => {
+  it("derives NEW/FOLLOW_UP and stamps the scoped clinic", async () => {
+    countMock.mockResolvedValue(0);
+    createMock.mockResolvedValue(visitRow("v9"));
+    await POST(
+      new Request("http://x/api/visits", {
+        method: "POST",
+        body: JSON.stringify({
+          patientId: "p1",
+          clinicId: "clinic_9",
+          reason: "Fever",
+        }),
+      }),
+    );
+    expect(createMock.mock.calls[0][0].data.type).toBe("NEW");
+    expect(createMock.mock.calls[0][0].data.clinicId).toBe("clinic_1"); // from scope
+
     countMock.mockResolvedValue(3);
     createMock.mockResolvedValue(visitRow("v10"));
     await POST(
@@ -117,6 +130,6 @@ describe("POST /api/visits", () => {
         }),
       }),
     );
-    expect(createMock.mock.calls[0][0].data.type).toBe("FOLLOW_UP");
+    expect(createMock.mock.calls[1][0].data.type).toBe("FOLLOW_UP");
   });
 });

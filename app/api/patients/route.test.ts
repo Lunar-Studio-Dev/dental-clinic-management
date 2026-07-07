@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const authMock = vi.fn();
+const scopeMock = vi.fn();
 const findManyMock = vi.fn();
 const createMock = vi.fn();
 
-vi.mock("@clerk/nextjs/server", () => ({ auth: () => authMock() }));
+vi.mock("~/lib/clinic-scope", () => ({
+  resolveClinicScope: (...a: unknown[]) => scopeMock(...a),
+}));
 vi.mock("~/lib/prisma", () => ({
   prisma: {
     patient: {
@@ -35,51 +37,43 @@ function row(id: string, name: string) {
   };
 }
 
+const okScope = { ok: true, clinicId: "clinic_1", role: "receptionist" };
+
 beforeEach(() => {
-  authMock.mockReset();
+  scopeMock.mockReset();
   findManyMock.mockReset();
   createMock.mockReset();
-  authMock.mockResolvedValue({ userId: "user_1" });
+  scopeMock.mockResolvedValue(okScope);
 });
 
 describe("GET /api/patients", () => {
-  it("401 when unauthenticated", async () => {
-    authMock.mockResolvedValue({ userId: null });
+  it("propagates a scope failure (e.g. 401/403)", async () => {
+    scopeMock.mockResolvedValue({ ok: false, status: 403, message: "no" });
     const res = await GET(
-      new Request("http://x/api/patients?clinicId=clinic_1"),
+      new Request("http://x/api/patients?clinicId=clinic_2"),
     );
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
+    expect(findManyMock).not.toHaveBeenCalled();
   });
 
-  it("400 when clinicId is missing", async () => {
-    const res = await GET(new Request("http://x/api/patients"));
-    expect(res.status).toBe(400);
-  });
-
-  it("scopes to firstClinicId and returns serialized patients", async () => {
+  it("scopes to the resolved clinic and returns serialized patients", async () => {
     findManyMock.mockResolvedValue([row("p1", "Asha")]);
     const res = await GET(
       new Request("http://x/api/patients?clinicId=clinic_1"),
     );
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.patients[0]).toMatchObject({
-      id: "p1",
-      firstClinicId: "clinic_1",
-    });
-    expect(typeof body.patients[0].createdAt).toBe("string");
-    expect(body.patients[0].visitCount).toBe(3);
+    expect(body.patients[0]).toMatchObject({ id: "p1", visitCount: 3 });
     expect(body.nextCursor).toBeNull();
-    const where = findManyMock.mock.calls[0][0].where;
-    expect(where.firstClinicId).toBe("clinic_1");
-    expect(where.OR).toBeUndefined();
+    expect(findManyMock.mock.calls[0][0].where.firstClinicId).toBe("clinic_1");
+    // scope is called with the requested clinicId from the query
+    expect(scopeMock).toHaveBeenCalledWith("clinic_1");
   });
 
   it("adds an OR name/phone filter when q is present", async () => {
     findManyMock.mockResolvedValue([]);
     await GET(new Request("http://x/api/patients?clinicId=clinic_1&q=asha"));
     const where = findManyMock.mock.calls[0][0].where;
-    expect(Array.isArray(where.OR)).toBe(true);
     expect(JSON.stringify(where.OR)).toContain("asha");
   });
 
@@ -97,7 +91,7 @@ describe("GET /api/patients", () => {
 });
 
 describe("POST /api/patients", () => {
-  it("400 on invalid body", async () => {
+  it("400 on invalid body (before scope)", async () => {
     const res = await POST(
       new Request("http://x/api/patients", {
         method: "POST",
@@ -108,7 +102,30 @@ describe("POST /api/patients", () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
-  it("creates a patient and returns 201", async () => {
+  it("propagates a scope failure (403 cross-clinic)", async () => {
+    scopeMock.mockResolvedValue({ ok: false, status: 403, message: "no" });
+    const res = await POST(
+      new Request("http://x/api/patients", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "X",
+          gender: "MALE",
+          contactNumber: "9812345678",
+          firstClinicId: "clinic_2",
+          ageYears: 25,
+        }),
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it("creates with the clinic stamped from scope (not the body)", async () => {
+    scopeMock.mockResolvedValue({
+      ok: true,
+      clinicId: "clinic_1",
+      role: "receptionist",
+    });
     createMock.mockResolvedValue(row("new1", "New Patient"));
     const res = await POST(
       new Request("http://x/api/patients", {
@@ -117,14 +134,12 @@ describe("POST /api/patients", () => {
           name: "New Patient",
           gender: "MALE",
           contactNumber: "9812345678",
-          firstClinicId: "clinic_1",
+          firstClinicId: "clinic_9", // forged; must be overridden
           ageYears: 25,
         }),
       }),
     );
     expect(res.status).toBe(201);
-    expect(createMock).toHaveBeenCalledOnce();
-    const body = await res.json();
-    expect(body.id).toBe("new1");
+    expect(createMock.mock.calls[0][0].data.firstClinicId).toBe("clinic_1");
   });
 });

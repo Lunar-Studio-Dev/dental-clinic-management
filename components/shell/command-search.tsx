@@ -13,8 +13,8 @@ import {
   CommandItem,
   CommandList,
 } from "~/components/ui/command";
+import { useActiveClinicId } from "~/lib/hooks/use-active-clinic";
 import { useClinics } from "~/lib/hooks/use-clinics";
-import { useCurrentClinicId } from "~/lib/hooks/use-current-clinic";
 import { useDebouncedValue } from "~/lib/hooks/use-debounced-value";
 import { usePatients } from "~/lib/hooks/use-patients";
 
@@ -25,7 +25,7 @@ export function CommandSearch() {
   const [q, setQ] = useState("");
   const router = useRouter();
   const { data: clinics } = useClinics();
-  const clinicId = useCurrentClinicId(clinics ?? []);
+  const clinicId = useActiveClinicId(clinics ?? []);
   const debouncedQ = useDebouncedValue(q, 250);
   const query = usePatients(clinicId, debouncedQ);
   const patients = query.data?.pages.flatMap((p) => p.patients) ?? [];

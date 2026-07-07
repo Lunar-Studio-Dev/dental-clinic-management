@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const authMock = vi.fn();
+const scopeMock = vi.fn();
 const getMetricsMock = vi.fn();
 
-vi.mock("@clerk/nextjs/server", () => ({ auth: () => authMock() }));
+vi.mock("~/lib/clinic-scope", () => ({
+  resolveClinicScope: (...a: unknown[]) => scopeMock(...a),
+}));
 vi.mock("~/lib/metrics-queries", () => ({
   getDashboardMetrics: (...a: unknown[]) => getMetricsMock(...a),
 }));
@@ -11,34 +13,32 @@ vi.mock("~/lib/metrics-queries", () => ({
 import { GET } from "~/app/api/metrics/route";
 
 beforeEach(() => {
-  authMock.mockReset();
+  scopeMock.mockReset();
   getMetricsMock.mockReset();
-  authMock.mockResolvedValue({ userId: "user_1" });
+  scopeMock.mockResolvedValue({
+    ok: true,
+    clinicId: "clinic_1",
+    role: "receptionist",
+  });
 });
 
 describe("GET /api/metrics", () => {
-  it("401 when unauthenticated", async () => {
-    authMock.mockResolvedValue({ userId: null });
+  it("propagates a scope failure", async () => {
+    scopeMock.mockResolvedValue({ ok: false, status: 403, message: "no" });
     const res = await GET(
-      new Request("http://x/api/metrics?clinicId=clinic_1"),
+      new Request("http://x/api/metrics?clinicId=clinic_2"),
     );
-    expect(res.status).toBe(401);
-  });
-
-  it("400 when clinicId is missing", async () => {
-    const res = await GET(new Request("http://x/api/metrics"));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(403);
     expect(getMetricsMock).not.toHaveBeenCalled();
   });
 
-  it("returns the metrics bundle for the clinic", async () => {
-    getMetricsMock.mockResolvedValue({ totalPatients: 48, repeatVisitPct: 61 });
+  it("computes metrics for the resolved clinic", async () => {
+    getMetricsMock.mockResolvedValue({ totalPatients: 48 });
     const res = await GET(
       new Request("http://x/api/metrics?clinicId=clinic_1"),
     );
     expect(res.status).toBe(200);
     expect(getMetricsMock).toHaveBeenCalledWith("clinic_1");
-    const body = await res.json();
-    expect(body.totalPatients).toBe(48);
+    expect((await res.json()).totalPatients).toBe(48);
   });
 });

@@ -58,3 +58,22 @@ export const visitNoteSchema = z.object({
 
 export type VisitCreateInput = z.infer<typeof visitCreateSchema>;
 export type VisitNoteInput = z.infer<typeof visitNoteSchema>;
+
+// Clinic CRUD (doctor-only).
+export const clinicCreateSchema = z.object({
+  name: z.string().trim().min(1, "Name is required"),
+  address: z.string().trim().nullable().optional(),
+});
+
+export const clinicUpdateSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  address: z.string().trim().nullable().optional(),
+});
+
+// Assign (or clear) a receptionist's clinic.
+export const staffAssignSchema = z.object({
+  clinicId: z.string().min(1).nullable(),
+});
+
+export type ClinicCreateInput = z.infer<typeof clinicCreateSchema>;
+export type ClinicUpdateInput = z.infer<typeof clinicUpdateSchema>;

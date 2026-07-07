@@ -13,10 +13,13 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "~/components/ui/sidebar";
-import { isActive, NAV_ITEMS } from "./nav-items";
+import { useRole } from "~/lib/hooks/use-role";
+import { isActive, visibleNavItems } from "./nav-items";
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const role = useRole();
+  const items = visibleNavItems(role);
 
   return (
     <Sidebar collapsible="icon">
@@ -32,7 +35,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {NAV_ITEMS.map((item) => (
+              {items.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
                     isActive={isActive(pathname, item.href)}

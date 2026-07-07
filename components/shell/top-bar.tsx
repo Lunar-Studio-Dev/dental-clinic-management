@@ -21,7 +21,6 @@ export function TopBar({ role }: { role: Role | null }) {
         </div>
       </div>
 
-
       <div className="flex items-center gap-3">
         <div className="flex-1 sm:max-w-md">
           <CommandSearch />

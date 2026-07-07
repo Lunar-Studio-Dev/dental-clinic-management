@@ -49,9 +49,9 @@ describe("seed constants — volume & invariants", () => {
     expect(VISITS).toHaveLength(500);
   });
 
-  it("has exactly 2 users: one receptionist, one doctor", () => {
-    expect(SEED_USERS).toHaveLength(2);
-    expect(SEED_USERS.filter((u) => u.role === "receptionist")).toHaveLength(1);
+  it("has 3 users: two receptionists (one to demo assignment) and one doctor", () => {
+    expect(SEED_USERS).toHaveLength(3);
+    expect(SEED_USERS.filter((u) => u.role === "receptionist")).toHaveLength(2);
     expect(SEED_USERS.filter((u) => u.role === "doctor")).toHaveLength(1);
   });
 

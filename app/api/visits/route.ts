@@ -1,5 +1,5 @@
-import { auth } from "@clerk/nextjs/server";
 import { startOfToday } from "date-fns";
+import { resolveClinicScope } from "~/lib/clinic-scope";
 import type { Prisma } from "~/lib/generated/prisma/client";
 import { prisma } from "~/lib/prisma";
 import { visitCreateSchema } from "~/lib/schemas";
@@ -9,15 +9,12 @@ const RECENT_LIMIT = 20;
 
 // GET /api/visits?clinicId&range=today|recent → { visits: VisitListItem[] }
 export async function GET(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
-
   const url = new URL(req.url);
-  const clinicId = url.searchParams.get("clinicId");
-  if (!clinicId) return new Response("clinicId is required", { status: 400 });
+  const scope = await resolveClinicScope(url.searchParams.get("clinicId"));
+  if (!scope.ok) return new Response(scope.message, { status: scope.status });
 
   const range = url.searchParams.get("range") ?? "recent";
-  const where: Prisma.VisitWhereInput = { clinicId };
+  const where: Prisma.VisitWhereInput = { clinicId: scope.clinicId };
   if (range === "today") where.visitedAt = { gte: startOfToday() };
 
   const rows = await prisma.visit.findMany({
@@ -30,11 +27,8 @@ export async function GET(req: Request) {
   return Response.json({ visits: rows.map(toVisitListItem) });
 }
 
-// POST /api/visits → 201 VisitDTO (type derived: first-ever visit = NEW, else FOLLOW_UP)
+// POST /api/visits → 201 VisitDTO (clinic forced to scope; type server-derived)
 export async function POST(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
-
   let json: unknown;
   try {
     json = await req.json();
@@ -48,6 +42,9 @@ export async function POST(req: Request) {
   }
   const d = parsed.data;
 
+  const scope = await resolveClinicScope(d.clinicId);
+  if (!scope.ok) return new Response(scope.message, { status: scope.status });
+
   const priorCount = await prisma.visit.count({
     where: { patientId: d.patientId },
   });
@@ -56,7 +53,7 @@ export async function POST(req: Request) {
   const created = await prisma.visit.create({
     data: {
       patientId: d.patientId,
-      clinicId: d.clinicId,
+      clinicId: scope.clinicId, // stamped from scope, not trusted from body
       type,
       reason: d.reason,
       notes: d.notes ?? null,

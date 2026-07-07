@@ -12,8 +12,8 @@ import {
 } from "~/components/ui/empty";
 import { Skeleton } from "~/components/ui/skeleton";
 import type { VisitRange } from "~/lib/data/visits";
+import { useActiveClinicId } from "~/lib/hooks/use-active-clinic";
 import { useClinics } from "~/lib/hooks/use-clinics";
-import { useCurrentClinicId } from "~/lib/hooks/use-current-clinic";
 import { useVisits } from "~/lib/hooks/use-visits";
 import { NewVisitDialog } from "./new-visit-dialog";
 import { VisitListItem } from "./visit-list-item";
@@ -65,7 +65,7 @@ function VisitSection({
 
 export function VisitsPage() {
   const { data: clinics } = useClinics();
-  const clinicId = useCurrentClinicId(clinics ?? []);
+  const clinicId = useActiveClinicId(clinics ?? []);
   const [newOpen, setNewOpen] = useState(false);
 
   return (
