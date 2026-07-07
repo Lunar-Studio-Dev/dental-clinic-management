@@ -1,19 +1,26 @@
-// Patients repository — typed stub. Implemented in Phase 2 (patient management).
-import type { PatientDTO, PatientListParams } from "~/lib/data/types";
-
-const NOT_YET = "patientsRepo: implemented in Phase 2";
+// Patients repository — hits /api/patients (added in Phase 2). Components/hooks
+// depend on this, never on fetch/Prisma directly.
+import { getJson, patchJson, postJson } from "~/lib/data/http";
+import type {
+  PatientCreateInput,
+  PatientDTO,
+  PatientListParams,
+  PatientListResult,
+  PatientUpdateInput,
+  PatientWithVisits,
+} from "~/lib/data/types";
 
 export const patientsRepo = {
-  list: (_params: PatientListParams): Promise<PatientDTO[]> => {
-    throw new Error(NOT_YET);
+  list: (params: PatientListParams): Promise<PatientListResult> => {
+    const sp = new URLSearchParams({ clinicId: params.clinicId });
+    if (params.q) sp.set("q", params.q);
+    if (params.cursor) sp.set("cursor", params.cursor);
+    return getJson<PatientListResult>(`/api/patients?${sp.toString()}`);
   },
-  get: (_id: string): Promise<PatientDTO> => {
-    throw new Error(NOT_YET);
-  },
-  create: (_input: Partial<PatientDTO>): Promise<PatientDTO> => {
-    throw new Error(NOT_YET);
-  },
-  update: (_id: string, _input: Partial<PatientDTO>): Promise<PatientDTO> => {
-    throw new Error(NOT_YET);
-  },
+  get: (id: string): Promise<PatientWithVisits> =>
+    getJson<PatientWithVisits>(`/api/patients/${id}`),
+  create: (input: PatientCreateInput): Promise<PatientDTO> =>
+    postJson<PatientDTO>("/api/patients", input),
+  update: (id: string, input: PatientUpdateInput): Promise<PatientDTO> =>
+    patchJson<PatientDTO>(`/api/patients/${id}`, input),
 };

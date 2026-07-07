@@ -16,7 +16,7 @@
 | **Database** | Neon (serverless Postgres) | |
 | **ORM** | Prisma | `@prisma/adapter-neon` for edge-friendly serverless driver |
 | **Auth** | Clerk | Roles via `publicMetadata.role` = `receptionist` \| `doctor` |
-| **Role model** | One app, in-app role switch | Same login, dashboard swaps by role; doctor can also switch clinics |
+| **Role model** | Role **locked** to Clerk metadata (no switch) | Receptionist→reception view, doctor→doctor view; clinic switch is the only context switch |
 | **Data layer** | TanStack Query + Next.js Route Handlers (`/api/*`) | Optimistic updates for modal/drawer CRUD; components call a `lib/data/*` repo seam |
 | **Client UI state** | **Zustand** (persisted to localStorage) | Selected clinic + active role-view + transient UI; survives reload |
 | **Seed source** | `/utils/constant.ts` (typed, API-shaped) | One dataset feeds the Prisma seed (Neon) **and** Clerk user seeding |
@@ -93,7 +93,7 @@ Edit **only** the global CSS file the init creates (Tailwind v4 `@theme inline` 
 ## 3. Information architecture
 
 ```
-Top bar:  [Logo] [Global Patient Search ⌘K] ............ [Clinic Switcher ▾] [Role: Reception/Doctor ▾] [User ▾]
+Top bar:  [Logo] [Global Patient Search ⌘K] ............ [Clinic Switcher ▾] «Reception» (read-only role badge) [User ▾]
 Sidebar:  Dashboard · Patients · Visits            (collapses to bottom nav on mobile)
 
 Routes
@@ -112,7 +112,7 @@ Delete/confirm actions    → confirmation           [AlertDialog]
 Command palette (⌘K)      → smart patient search    [Command inside Dialog]
 ```
 
-**Shell components:** top bar clinic switcher = `Select`; role switcher = `ToggleGroup` (2 options) or `Select`; user menu = Clerk `<UserButton>`; left nav = shadcn `Sidebar` (collapsible, becomes an off-canvas `Sidebar` sheet on mobile). Every overlay uses its required Title (`SheetTitle`/`DialogTitle`, `sr-only` when visually hidden) for accessibility.
+**Shell components:** top bar clinic switcher = `Select`; role = read-only `Badge` (locked to Clerk metadata, not switchable); user menu = Clerk `<UserButton>`; left nav = shadcn `Sidebar` (collapsible, becomes an off-canvas `Sidebar` sheet on mobile). Every overlay uses its required Title (`SheetTitle`/`DialogTitle`, `sr-only` when visually hidden) for accessibility.
 
 Everything hangs off **current clinic** (from switcher, persisted) and **current role**.
 
@@ -125,7 +125,7 @@ Everything hangs off **current clinic** (from switcher, persisted) and **current
 **Desktop app shell** (every screen sits inside this)
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│ ▣ ClinicOS   [ 🔍 Search patients…  ⌘K ]      [Clinic 1 ▾] [Reception ▾] [👤] │
+│ ▣ ClinicOS   [ 🔍 Search patients…  ⌘K ]      [Clinic 1 ▾] «Reception» [👤] │
 ├────────────┬──────────────────────────────────────────────────────────────┤
 │ ▚ Dashboard│                                                              │
 │ ☺ Patients │                    ‹ page content ›                          │
@@ -295,7 +295,7 @@ All KPIs are scoped to the **current clinic** unless noted. Windows via date-fns
 
 **Clinic KPIs** — Total Registered, Total Visits, Daily/Weekly/Monthly Visits, New vs Returning (donut).
 
-> Implemented once in `lib/metrics.ts` as pure functions over Prisma queries, exposed via `/api/metrics?clinicId=&scope=`. Dashboards never compute inline.
+> Implemented once in `lib/metrics.ts` as **pure** functions over fetched arrays (`computeMetrics`, unit-tested) + a thin `getDashboardMetrics(clinicId)` that wires Prisma. Exposed via `/api/metrics?clinicId` returning one full `MetricsDTO` bundle (role-agnostic; each dashboard picks the fields it shows). Dashboards never compute inline. See [`PHASE-4.md`](./PHASE-4.md).
 
 ---
 
@@ -309,7 +309,7 @@ PATCH  /api/patients/[id]                    edit
 GET    /api/visits?clinicId&range           recent/daily visits
 POST   /api/visits                          new visit (auto NEW/FOLLOW_UP)
 PATCH  /api/visits/[id]                      add/edit notes (doctor)
-GET    /api/metrics?clinicId&role           all KPIs for a dashboard in one call
+GET    /api/metrics?clinicId                 full KPI bundle (both dashboards pick fields)
 GET    /api/clinics                          clinic list (for switcher)
 ```
 
@@ -333,7 +333,7 @@ app/
   api/…                        # route handlers above
   layout.tsx                   # ClerkProvider + QueryProvider + fonts
 components/
-  shell/        AppSidebar[Sidebar], TopBar, ClinicSwitcher[Select], RoleSwitcher[ToggleGroup],
+  shell/        AppSidebar[Sidebar], TopBar, BottomNav, ClinicSwitcher[Select], RoleBadge[Badge],
                 CommandSearch[Command+Dialog]                    # mobile nav = Sidebar off-canvas
   patients/     PatientList[Table|Card grid], PatientCard[Card+Badge+Avatar],
                 PatientFormSheet[Sheet+Field/FieldGroup], PatientProfile[Card+Tabs],
@@ -373,22 +373,22 @@ middleware.ts                  # Clerk route protection
 - **Done when:** app boots, login works, seeded DB reachable.
 
 ### Phase 1 — App shell & navigation
-- `npx shadcn@latest add sidebar select toggle-group dropdown-menu tooltip separator skeleton command dialog`
-- TopBar (search stub, clinic switcher, role switcher, Clerk `<UserButton>`), shadcn `Sidebar` (collapsible; off-canvas on mobile via `SidebarTrigger`).
+- `pnpm dlx shadcn@latest add sidebar select dropdown-menu tooltip separator skeleton command dialog button badge` (toggle-group moves to Phase 2 for form option-sets)
+- TopBar (search stub, clinic switcher, read-only role badge, Clerk `<UserButton>`), shadcn `Sidebar` (desktop) + BottomNav (mobile). Full detail in [`PHASE-1.md`](./PHASE-1.md).
 - Clinic switcher reads `/api/clinics`, persists selection. Role switcher reads Clerk metadata (fallback UI toggle in dev).
 - Empty dashboard/patients/visits routes with skeletons.
 - **Done when:** shell is consistent, responsive, clinic/role state flows everywhere.
 
 ### Phase 2 — Patient management (core)
-- `npx shadcn@latest add table card sheet field input badge avatar empty tabs`
-- Patient list: server-rendered first page + TanStack Query for search/pagination.
+- `pnpm dlx shadcn@latest add table card sheet field input badge avatar empty tabs toggle-group sonner` (toggle-group for gender/blood option-sets; sonner pulled forward for CRUD toasts). Full detail in [`PHASE-2.md`](./PHASE-2.md).
+- Patient list: **client-rendered** (current clinic lives in client Zustand) + TanStack Query for search/pagination — see PHASE-2 §2 decision 5.
 - Smart search (name/phone), debounced; wire ⌘K command palette to it.
 - Register/Edit **drawer** (react-hook-form + Zod), optimistic insert/update.
 - Patient profile page: details card + **visit timeline** (vertical, newest first).
 - **Done when:** register → search → open → edit a patient in ≤ 3 clicks each.
 
 ### Phase 3 — Visits
-- `npx shadcn@latest add textarea input-group alert-dialog sonner`  (Dialog already added in Phase 1)
+- `pnpm dlx shadcn@latest add textarea input-group alert-dialog`  (Dialog added in P1; sonner added in P2)
 - New Visit **modal** (from dashboard, patient profile, visits page) — auto NEW/FOLLOW_UP.
 - Visits page: today / recent lists for current clinic.
 - Add Visit Note modal (doctor) on profile timeline.
@@ -400,7 +400,7 @@ middleware.ts                  # Clerk route protection
 - ReceptionDashboard: KPI cards + quick actions (Register, Search, New Visit) + recent visits.
 - DoctorDashboard: seen-today, recent visits, clinic-wise list, monthly line, repeat %.
 - Charts: KpiCard, small TrendChart (line), BarChart, DonutChart (New vs Returning).
-- **Done when:** both dashboards render real seeded numbers, role switch swaps them.
+- **Done when:** both dashboards render real seeded numbers; the role-locked view shows the correct one per Clerk role.
 
 ### Phase 5 — Polish & a11y
 - Loading skeletons everywhere, empty states, toasts, error boundaries.

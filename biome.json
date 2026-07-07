@@ -40,5 +40,15 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["components/ui/**"],
+      "linter": { "enabled": false }
+    },
+    {
+      "includes": ["**/*.test.tsx"],
+      "linter": { "rules": { "a11y": { "useValidAriaRole": "off" } } }
+    }
+  ]
 }

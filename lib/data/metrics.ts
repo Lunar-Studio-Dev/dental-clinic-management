@@ -1,17 +1,10 @@
-// Metrics repository — typed stub. Implemented in Phase 4 (dashboards & KPIs).
-export interface DashboardMetrics {
-  totalPatients: number;
-  newToday: number;
-  returningPct: number;
-  visitsToday: number;
-  visitsThisWeek: number;
-  visitsThisMonth: number;
-}
-
-const NOT_YET = "metricsRepo: implemented in Phase 4";
+// Metrics repository — hits /api/metrics (added in Phase 4).
+import { getJson } from "~/lib/data/http";
+import type { MetricsDTO } from "~/lib/data/types";
 
 export const metricsRepo = {
-  dashboard: (_clinicId: string): Promise<DashboardMetrics> => {
-    throw new Error(NOT_YET);
-  },
+  dashboard: (clinicId: string): Promise<MetricsDTO> =>
+    getJson<MetricsDTO>(
+      `/api/metrics?clinicId=${encodeURIComponent(clinicId)}`,
+    ),
 };

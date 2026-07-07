@@ -19,6 +19,15 @@ function toVisitedAt(daysAgo: number, minuteOfDay: number, base: Date): Date {
 async function main() {
   const now = new Date();
 
+  // Registration ≈ first clinic visit: a patient's createdAt = their earliest visit.
+  // (Makes "New patients today" realistic + the monthly chart meaningful.)
+  const earliestVisitByPatient = new Map<string, Date>();
+  for (const v of VISITS) {
+    const at = toVisitedAt(v.daysAgo, v.minuteOfDay, now);
+    const cur = earliestVisitByPatient.get(v.patientId);
+    if (!cur || at < cur) earliestVisitByPatient.set(v.patientId, at);
+  }
+
   // FK-safe wipe: visits → patients → clinics.
   await prisma.visit.deleteMany();
   await prisma.patient.deleteMany();
@@ -45,6 +54,7 @@ async function main() {
       allergies: p.allergies ?? null,
       bloodGroup: p.bloodGroup,
       firstClinicId: p.firstClinicId,
+      createdAt: earliestVisitByPatient.get(p.id) ?? now,
     })),
   });
 

@@ -41,6 +41,50 @@ export interface PatientListParams {
   cursor?: string;
 }
 
+// List rows carry a visit count for the New/Returning status badge.
+export interface PatientListItem extends PatientDTO {
+  visitCount: number;
+}
+
+export interface PatientListResult {
+  patients: PatientListItem[];
+  nextCursor: string | null;
+}
+
+export interface PatientWithVisits {
+  patient: PatientDTO;
+  visits: VisitDTO[];
+}
+
+// Visit list rows carry the patient's name for display.
+export interface VisitListItem extends VisitDTO {
+  patientName: string;
+}
+
+// Dashboard KPI bundle (one call powers both dashboards).
+export interface MetricsDTO {
+  totalPatients: number;
+  newPatientsToday: number;
+  returningPatients: number;
+  repeatVisitPct: number;
+  visitsToday: number;
+  visitsThisWeek: number;
+  visitsThisMonth: number;
+  patientsSeenToday: number;
+  weeklyVisitTrend: { day: string; count: number }[];
+  monthlyPatientCounts: { month: string; count: number }[];
+  clinicWisePatients: { clinicId: string; name: string; count: number }[];
+  newVsReturning: { new: number; returning: number };
+  recentVisits: VisitListItem[];
+}
+
+// Input shapes come from the shared Zod schemas (single source of truth).
+export type {
+  PatientCreateInput,
+  PatientUpdateInput,
+  VisitCreateInput,
+} from "~/lib/schemas";
+
 export interface VisitListParams {
   clinicId: string;
   range?: "today" | "week" | "month";

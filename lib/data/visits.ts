@@ -1,16 +1,26 @@
-// Visits repository — typed stub. Implemented in Phase 3 (visits).
-import type { VisitDTO, VisitListParams } from "~/lib/data/types";
+// Visits repository — hits /api/visits (added in Phase 3).
+import { getJson, patchJson, postJson } from "~/lib/data/http";
+import type {
+  VisitCreateInput,
+  VisitDTO,
+  VisitListItem,
+} from "~/lib/data/types";
 
-const NOT_YET = "visitsRepo: implemented in Phase 3";
+export type VisitRange = "today" | "recent";
 
 export const visitsRepo = {
-  list: (_params: VisitListParams): Promise<VisitDTO[]> => {
-    throw new Error(NOT_YET);
+  list: (params: {
+    clinicId: string;
+    range: VisitRange;
+  }): Promise<{ visits: VisitListItem[] }> => {
+    const sp = new URLSearchParams({
+      clinicId: params.clinicId,
+      range: params.range,
+    });
+    return getJson<{ visits: VisitListItem[] }>(`/api/visits?${sp.toString()}`);
   },
-  create: (_input: Partial<VisitDTO>): Promise<VisitDTO> => {
-    throw new Error(NOT_YET);
-  },
-  addNote: (_id: string, _notes: string): Promise<VisitDTO> => {
-    throw new Error(NOT_YET);
-  },
+  create: (input: VisitCreateInput): Promise<VisitDTO> =>
+    postJson<VisitDTO>("/api/visits", input),
+  addNote: (id: string, notes: string): Promise<VisitDTO> =>
+    patchJson<VisitDTO>(`/api/visits/${id}`, { notes }),
 };
