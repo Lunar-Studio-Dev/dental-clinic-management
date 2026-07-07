@@ -10,13 +10,16 @@
 
 | Area | Choice | Notes |
 |------|--------|-------|
-| **Platform** | Next.js 15 (App Router), web, responsive | Reception desk (laptop) + doctor (tablet/mobile browser) |
-| **Language** | TypeScript (strict) | |
+| **Platform** | Next.js **16.2** (App Router), web, responsive | Reception desk (laptop) + doctor (tablet/mobile browser); React 19.2 |
+| **Language** | TypeScript (strict) | Alias `~/*` → project root (no `src/` dir) |
+| **Tooling** | **pnpm** · **Biome** (lint+format) | `pnpm dlx shadcn@latest`; run `pnpm format` after adding components |
 | **Database** | Neon (serverless Postgres) | |
 | **ORM** | Prisma | `@prisma/adapter-neon` for edge-friendly serverless driver |
 | **Auth** | Clerk | Roles via `publicMetadata.role` = `receptionist` \| `doctor` |
 | **Role model** | One app, in-app role switch | Same login, dashboard swaps by role; doctor can also switch clinics |
-| **Data layer** | TanStack Query + Next.js Route Handlers (`/api/*`) | Optimistic updates for modal/drawer CRUD |
+| **Data layer** | TanStack Query + Next.js Route Handlers (`/api/*`) | Optimistic updates for modal/drawer CRUD; components call a `lib/data/*` repo seam |
+| **Client UI state** | **Zustand** (persisted to localStorage) | Selected clinic + active role-view + transient UI; survives reload |
+| **Seed source** | `/utils/constant.ts` (typed, API-shaped) | One dataset feeds the Prisma seed (Neon) **and** Clerk user seeding |
 | **UI library** | **shadcn/ui** (owns all UI) | Preset `base-nova`; components live as source in `components/ui/` |
 | **UI primitive** | **base** (Base UI) | Custom triggers use the `render` prop (not `asChild`) — see §7 |
 | **Style / theme** | `nova` style, custom clinic theme | Semantic tokens only (`bg-primary`, `text-muted-foreground`) |
@@ -53,7 +56,7 @@ The entire UI is built from **shadcn/ui** components (added as source into `comp
 ### Setup & config
 - **Init once:** `npx shadcn@latest init --preset base-nova` → writes `components.json` (`style: nova`, `base` primitive, `iconLibrary: lucide`, alias `~/`, TS, Tailwind v4).
 - Add components per phase with `npx shadcn@latest add <name>` (see roadmap). Before adding, check `components.json` / `components/ui/` so we never re-add.
-- After adding any community/registry block, **read the file** and fix imports/icons/composition to match this project (lucide, `@/` alias).
+- After adding any community/registry block, **read the file** and fix imports/icons/composition to match this project (lucide, `~/` alias).
 
 ### Clinic theme (customize the generated tokens)
 Edit **only** the global CSS file the init creates (Tailwind v4 `@theme inline` + `:root`/`.dark` oklch vars) — never a new CSS file, never `dark:` color classes. Override the brand tokens to a calm, trustworthy medical palette; leave shadcn's neutral scale intact:
@@ -112,6 +115,95 @@ Command palette (⌘K)      → smart patient search    [Command inside Dialog]
 **Shell components:** top bar clinic switcher = `Select`; role switcher = `ToggleGroup` (2 options) or `Select`; user menu = Clerk `<UserButton>`; left nav = shadcn `Sidebar` (collapsible, becomes an off-canvas `Sidebar` sheet on mobile). Every overlay uses its required Title (`SheetTitle`/`DialogTitle`, `sr-only` when visually hidden) for accessibility.
 
 Everything hangs off **current clinic** (from switcher, persisted) and **current role**.
+
+---
+
+## 3·A. UI wireframes — final look
+
+> Low-fi reference for the end-state. Detailed, phase-specific wireframes live in each `PHASE-N.md`.
+
+**Desktop app shell** (every screen sits inside this)
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│ ▣ ClinicOS   [ 🔍 Search patients…  ⌘K ]      [Clinic 1 ▾] [Reception ▾] [👤] │
+├────────────┬──────────────────────────────────────────────────────────────┤
+│ ▚ Dashboard│                                                              │
+│ ☺ Patients │                    ‹ page content ›                          │
+│ ⧗ Visits   │                                                              │
+│  ─────     │                                                              │
+│ [ + New ]  │                                                              │
+└────────────┴──────────────────────────────────────────────────────────────┘
+```
+
+**Reception dashboard** — "what's happening today?"
+```
+Dashboard · Clinic 1                                    [+ Register] [+ New Visit]
+┌────────────┬────────────┬────────────┬────────────┐
+│ Total      │ New today  │ Returning  │ Today      │
+│ 1,204      │ 8          │ 63%        │ 21 visits  │
+└────────────┴────────────┴────────────┴────────────┘
+┌───────────────────────────┐   ┌────────────────────────────┐
+│ Visits this week ▁▂▄▆█▅▃  │   │ Recent visits              │
+│ (line chart)              │   │ • Asha M.  09:12  ● New    │
+└───────────────────────────┘   │ • Ravi K.  09:20  ○ F/U    │
+                                │ • …                        │
+                                └────────────────────────────┘
+```
+
+**Doctor dashboard** — patient-focused
+```
+Dashboard · Dr. view · Clinic 1                              [Switch clinic ▾]
+┌────────────┬────────────┬────────────┐
+│ Seen today │ Monthly    │ Repeat %   │
+│ 14         │ ▁▂▄▆█ 320  │ 63%        │
+└────────────┴────────────┴────────────┘
+┌───────────────────────────┐   ┌────────────────────────────┐
+│ Clinic-wise patients       │   │ Recent patient visits      │
+│   Clinic1 ◕   Clinic2 ◔    │   │ • Asha M.  → open          │
+│   (donut)                  │   │ • Ravi K.  → open          │
+└───────────────────────────┘   └────────────────────────────┘
+```
+
+**Patients list** + **Patient profile / timeline**
+```
+Patients · Clinic 1        [ 🔍 name / phone ]  [+ Register]   │ ‹ Patients            [Edit] [+ New Visit]
+┌──────────────────────────────────────────────────┐         │ ┌────────────────────────┐ Timeline
+│ Name        Age Sex Phone        Last     Status  │         │ │ Asha Mehta  ● Returning │ ┃
+│ Asha Mehta  34  F   98…01        Today    ● Ret   │         │ │ 34 · Female · O+        │ ┣━ Jul 07 New · Fever [+note]
+│ Ravi Kumar  41  M   98…02        2d ago   ○ New   │         │ │ 📞 98…01                │ ┃  "rest, fluids"
+│ …                                                 │         │ │ 🏥 First: Clinic 1      │ ┣━ Jun 20 Follow-up
+└──────────────────────────────────────────────────┘         │ │ ⚠ Penicillin            │ ┃
+                                                              │ └────────────────────────┘ ┗━ May 02 New · Cough
+```
+
+**Register drawer** (Sheet, right) · **New visit modal** (Dialog)
+```
+┌── Register patient ─────────────┐        ┌──── New visit · Asha Mehta ─────┐
+│ Name       [________________]   │        │ Clinic  [Clinic 1 ▾]            │
+│ DOB / Age  [__/__/__] [__]      │        │ Type    (New)(Follow-up) auto   │
+│ Gender     (Male)(Female)(Oth)  │        │ Reason  [____________________]  │
+│ Phone      [________________]   │        │ Notes   [____________________]  │
+│ Blood [A+▾]   Clinic [1 ▾]      │        │                                 │
+│ Allergies  [________________]   │        │               [Cancel] [Save ▶] │
+│ History    [________________]   │        └─────────────────────────────────┘
+│               [Cancel] [Save ▶] │
+└─────────────────────────────────┘
+```
+
+**Mobile** (≤ md — bottom nav replaces sidebar)
+```
+┌───────────────┐
+│ ClinicOS   👤 │
+│ [🔍 Search  ] │
+├───────────────┤
+│  KPI  │  KPI  │
+│  KPI  │  KPI  │
+│ recent visits │
+│  …            │
+├───────────────┤
+│ ▚   ☺   ⧗   + │  ← bottom nav (Dashboard·Patients·Visits·New)
+└───────────────┘
+```
 
 ---
 
@@ -174,7 +266,7 @@ model Visit {
 }
 ```
 
-**Seed:** Clinic 1, Clinic 2, plus ~15 sample patients and a spread of visits across today/this week/this month so KPIs and charts render immediately.
+**Seed:** All seed data lives in typed constants at `/utils/constant.ts` (shaped to the Prisma/API types). A `prisma/seed.ts` script inserts Clinic 1, Clinic 2, a spread of sample patients and visits (across today/this week/this month so KPIs and charts render immediately) into **Neon**; a companion `scripts/seed-clerk.ts` creates the seed users in **Clerk** with `publicMetadata.role`. Editing `/utils/constant.ts` is the single source for both.
 
 **Derived rules:**
 - Age = from `dateOfBirth` if present, else `ageYears`.
@@ -253,9 +345,16 @@ components/
                 select toggle-group field input-group textarea command table badge avatar
                 separator skeleton sonner empty tabs chart sidebar tooltip dropdown-menu
 lib/
-  prisma.ts, schemas.ts, metrics.ts, clinic-context.tsx, query.ts, utils.ts
+  prisma.ts, schemas.ts, metrics.ts, query.ts, utils.ts, auth.ts, types.ts
+  data/         clinics.ts patients.ts visits.ts metrics.ts types.ts  # repo seam (swap local→API)
+stores/
+  ui-store.ts                  # Zustand: current clinic + role-view (persisted) — replaces clinic-context
+utils/
+  constant.ts, constant.schema.ts   # typed seed dataset (feeds Neon + Clerk seeding)
 prisma/
   schema.prisma, seed.ts
+scripts/
+  seed-clerk.ts                # creates seed users in Clerk with role metadata
 middleware.ts                  # Clerk route protection
 ```
 
@@ -263,8 +362,10 @@ middleware.ts                  # Clerk route protection
 
 ## 8. Build roadmap (phased, each phase independently demoable)
 
+> **Per-phase convention:** every `PHASE-N.md` is written first as a detailed technical plan (reviewed against this doc), built **TDD** (Vitest+RTL), then reviewed against its plan + the DoD. Each phase plan **must include ASCII diagrams** — user-flow and/or wireframes of exactly what that phase produces (screens, components, sections, flows).
+
 ### Phase 0 — Scaffold & infra
-- `create-next-app` (TS, App Router, Tailwind v4, ESLint), then **`npx shadcn@latest init --preset base-nova`** (base primitive + nova style; TS; `@/` alias; lucide icons). This writes `components.json`, the global theme CSS, and `lib/utils.ts` (`cn()`).
+- App already scaffolded (Next 16, pnpm, Biome, `~/` alias). Run **`pnpm dlx shadcn@latest init --preset base-nova`** (base primitive + nova style; TS; `~/` alias; lucide icons). This writes `components.json`, the global theme CSS, and `lib/utils.ts` (`cn()`). Full detail in [`PHASE-0.md`](./PHASE-0.md).
 - Add non-UI deps with the project package manager: TanStack Query, Framer Motion, react-hook-form, `@hookform/resolvers`, Zod, date-fns. (Recharts comes in transitively with the shadcn `chart` component — don't add it directly.)
 - Prisma + Neon: `DATABASE_URL`, schema, `prisma db push`, seed script.
 - Clerk: install, `ClerkProvider`, `middleware.ts`, sign-in/up pages, env keys.

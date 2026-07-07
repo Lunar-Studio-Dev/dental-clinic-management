@@ -1,0 +1,81 @@
+// Clinic Management System — data model (see .claude/plans/IMPLEMENTATION.md §4)
+// Prisma 7: `prisma-client` generator + Query Compiler → driver adapter required at runtime.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum BloodGroup {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  AB_POS
+  AB_NEG
+  O_POS
+  O_NEG
+  UNKNOWN
+}
+
+enum VisitType {
+  NEW
+  FOLLOW_UP
+}
+
+model Clinic {
+  id        String    @id @default(cuid())
+  name      String
+  address   String?
+  createdAt DateTime  @default(now())
+  patients  Patient[] @relation("FirstClinic")
+  visits    Visit[]
+}
+
+model Patient {
+  id             String     @id @default(cuid())
+  name           String
+  dateOfBirth    DateTime? // age derived; DOB optional, age fallback
+  ageYears       Int? // used when DOB unknown
+  gender         Gender
+  contactNumber  String
+  address        String?
+  medicalHistory String? // basic free text
+  allergies      String? // basic free text
+  bloodGroup     BloodGroup @default(UNKNOWN)
+  firstClinicId  String
+  firstClinic    Clinic     @relation("FirstClinic", fields: [firstClinicId], references: [id])
+  visits         Visit[]
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([name])
+  @@index([contactNumber])
+  @@index([firstClinicId])
+}
+
+model Visit {
+  id        String    @id @default(cuid())
+  patientId String
+  patient   Patient   @relation(fields: [patientId], references: [id])
+  clinicId  String
+  clinic    Clinic    @relation(fields: [clinicId], references: [id])
+  type      VisitType @default(FOLLOW_UP) // NEW if patient's first-ever visit
+  reason    String? // chief complaint (short)
+  notes     String? // doctor's visit notes
+  visitedAt DateTime  @default(now())
+  createdAt DateTime  @default(now())
+
+  @@index([clinicId, visitedAt])
+  @@index([patientId, visitedAt])
+}
